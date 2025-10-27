@@ -5,7 +5,7 @@ pytest-cov==6.0.0
 # Code Quality
 flake8==7.1.1
 black==24.10.0
-isort==5.13.2
+isort==7.0.0
 
 # Security
 safety==3.2.11
