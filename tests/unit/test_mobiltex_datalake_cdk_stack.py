@@ -1,13 +1,13 @@
 import aws_cdk as core
 import aws_cdk.assertions as assertions
 
-from data_lake_project_mobiltex.data_lake_project_mobiltex_stack import DataLakeProjectMobiltexStack
+from mobiltex_datalake_cdk.mobiltex_datalake_cdk_stack import MobiltexDatalakeCdkStack
 
 # example tests. To run these tests, uncomment this file along with the example
-# resource in data_lake_project_mobiltex/data_lake_project_mobiltex_stack.py
+# resource in mobiltex_datalake_cdk/mobiltex_datalake_cdk_stack.py
 def test_sqs_queue_created():
     app = core.App()
-    stack = DataLakeProjectMobiltexStack(app, "data-lake-project-mobiltex")
+    stack = MobiltexDatalakeCdkStack(app, "mobiltex-datalake-cdk")
     template = assertions.Template.from_stack(stack)
 
 #     template.has_resource_properties("AWS::SQS::Queue", {

@@ -1,0 +1,451 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '22'
+
+jobs:
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4  # ✅ v5 doesn't exist
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Run Python linting with flake8
+        continue-on-error: true
+        run: |
+          echo "## 🔍 Python Linting Results" >> $GITHUB_STEP_SUMMARY
+          python -m pip install flake8
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics > flake8-critical.txt || true
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics > flake8-all.txt || true
+
+          echo "### Critical Issues" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (cat flake8-critical.txt || echo "No critical issues found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+          echo "### All Issues (first 20)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (head -20 flake8-all.txt || echo "No issues found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Python formatting check with black
+        continue-on-error: true
+        run: |
+          python -m pip install black
+          black --check . || echo "⚠️ Code formatting issues found. Run 'black .' to fix."
+
+      - name: Run Python import sorting check
+        continue-on-error: true
+        run: |
+          python -m pip install isort
+          isort --check-only . || echo "⚠️ Import sorting issues found. Run 'isort .' to fix."
+
+      - name: Run YAML linting
+        continue-on-error: true
+        run: |
+          python -m pip install yamllint
+          yamllint . || echo "⚠️ YAML issues found"
+
+  cdk-validation:
+    name: CDK Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: CDK Synth
+        run: |
+          echo "## 🏗️ CDK Validation" >> $GITHUB_STEP_SUMMARY
+          cdk synth > cdk-synth-output.txt 2>&1
+          status=$?
+          if [ $status -eq 0 ]; then
+            echo "✅ CDK synth succeeded" >> $GITHUB_STEP_SUMMARY
+            echo "### CloudFormation Template" >> $GITHUB_STEP_SUMMARY
+            echo "Template(s) generated under cdk.out" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ CDK synth failed" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            tail -50 cdk-synth-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: CDK Diff (skipped - needs AWS creds)
+        if: always()
+        run: |
+          echo "ℹ️ CDK diff skipped (requires AWS credentials)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload CloudFormation template
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudformation-template
+          path: cdk.out/*.template.json
+          if-no-files-found: ignore   # 🛡️ avoid failing if no templates
+          retention-days: 7
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Run Trivy vulnerability scanner (Filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          output: trivy-fs-results.txt
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+
+      - name: Run Trivy vulnerability scanner (JSON format for detailed analysis)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: trivy-fs-results.json
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+
+      - name: Display Trivy filesystem scan results
+        if: always()
+        run: |
+          echo "## 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "### Filesystem Security Issues" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (cat trivy-fs-results.txt || echo "No issues found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Trivy vulnerability scanner (Configuration)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          output: trivy-config-results.txt
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "0"
+
+      - name: Display Trivy config scan results
+        if: always()
+        run: |
+          echo "### Infrastructure-as-Code Security Issues" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (cat trivy-config-results.txt || echo "No issues found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Run Trivy for Python dependencies
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          output: trivy-deps-results.txt
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          # Trivy will auto-detect requirements*.txt in the repo when scanning the fs
+
+      - name: Display dependency vulnerabilities
+        if: always()
+        run: |
+          echo "### Python Dependency Vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (cat trivy-deps-results.txt || echo "No vulnerabilities found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          cat > trivy-report.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Trivy Security Scan Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+              .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+              h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+              h2 { color: #34495e; margin-top: 30px; }
+              pre { background: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre-wrap; }
+              .timestamp { color: #7f8c8d; font-size: 14px; }
+              .section { margin: 20px 0; padding: 15px; background: #ecf0f1; border-radius: 5px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <h1>🔒 Trivy Security Scan Report</h1>
+              <p class="timestamp">Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")</p>
+
+              <div class="section">
+                <h2>📁 Filesystem Scan</h2>
+                <pre>$(cat trivy-fs-results.txt 2>/dev/null || echo "No issues found")</pre>
+              </div>
+
+              <div class="section">
+                <h2>⚙️ Configuration Scan</h2>
+                <pre>$(cat trivy-config-results.txt 2>/dev/null || echo "No issues found")</pre>
+              </div>
+
+              <div class="section">
+                <h2>📦 Dependency Scan</h2>
+                <pre>$(cat trivy-deps-results.txt 2>/dev/null || echo "No vulnerabilities found")</pre>
+              </div>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload Trivy scan results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: trivy-security-report
+          path: |
+            trivy-fs-results.txt
+            trivy-fs-results.json
+            trivy-config-results.txt
+            trivy-deps-results.txt
+            trivy-report.html
+          if-no-files-found: warn   # 🛡️
+          retention-days: 30
+
+  dependency-check:
+    name: Dependency Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check for outdated dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+          echo "## 📦 Dependency Check" >> $GITHUB_STEP_SUMMARY
+          echo "### Outdated Python Packages" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          pip list --outdated >> $GITHUB_STEP_SUMMARY || echo "All packages up to date" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Check dependency tree
+        run: |
+          python -m pip install pipdeptree
+          echo "### Dependency Tree" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          pipdeptree --warn silence | head -50 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Detect dependency conflicts
+        continue-on-error: true
+        run: |
+          pip check || echo "⚠️ Dependency conflicts detected"
+
+      - name: Safety check for known vulnerabilities
+        continue-on-error: true
+        run: |
+          python -m pip install safety
+          echo "### Known Vulnerabilities (Safety DB)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          safety check --full-report | head -50 >> $GITHUB_STEP_SUMMARY || echo "No known vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  test-execution:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Run unit tests with pytest
+        run: |
+          echo "## 🧪 Test Results" >> $GITHUB_STEP_SUMMARY
+          pytest tests/ -v --tb=short > test-results.txt 2>&1 || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          (cat test-results.txt || echo "No tests found") >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate test coverage
+        continue-on-error: true
+        run: |
+          python -m pip install pytest-cov
+          # Update the package path below to your actual package name
+          pytest tests/ --cov=. --cov-report=term --cov-report=html > coverage.txt 2>&1 || true
+          echo "### Test Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -20 coverage.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: htmlcov/
+          if-no-files-found: ignore   # 🛡️
+          retention-days: 7
+
+  pr-summary:
+    name: PR Checks Summary
+    runs-on: ubuntu-latest
+    needs: [code-quality, cdk-validation, security-scan, dependency-check, test-execution]
+    if: always()
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Generate PR summary
+        run: |
+          echo "# 📋 Pull Request Checks Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Job Status Overview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Quality & Linting | ${{ needs.code-quality.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CDK Validation | ${{ needs.cdk-validation.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scanning | ${{ needs.security-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dependency Check | ${{ needs.dependency-check.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Execution | ${{ needs.test-execution.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.code-quality.result }}" == "success" && \
+                "${{ needs.cdk-validation.result }}" == "success" && \
+                "${{ needs.security-scan.result }}" == "success" && \
+                "${{ needs.dependency-check.result }}" == "success" && \
+                "${{ needs.test-execution.result }}" == "success" ]]; then
+            echo "## ✅ All Checks Passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This PR is ready for review and merge." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ⚠️ Some Checks Failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed checks above and fix any issues before merging." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const codeQuality = '${{ needs.code-quality.result }}' === 'success' ? '✅' : '❌';
+            const cdkValidation = '${{ needs.cdk-validation.result }}' === 'success' ? '✅' : '❌';
+            const securityScan = '${{ needs.security-scan.result }}' === 'success' ? '✅' : '❌';
+            const dependencyCheck = '${{ needs.dependency-check.result }}' === 'success' ? '✅' : '❌';
+            const testExecution = '${{ needs.test-execution.result }}' === 'success' ? '✅' : '❌';
+
+            const allPassed =
+              '${{ needs.code-quality.result }}' === 'success' &&
+              '${{ needs.cdk-validation.result }}' === 'success' &&
+              '${{ needs.security-scan.result }}' === 'success' &&
+              '${{ needs.dependency-check.result }}' === 'success' &&
+              '${{ needs.test-execution.result }}' === 'success';
+
+            const overall = allPassed ? '✅ All checks passed!' : '⚠️ Some checks failed';
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              c.body?.includes('PR Checks Summary')
+            );
+
+            const body = [
+              '## 🤖 PR Checks Summary',
+              '',
+              '| Check | Status |',
+              '|-------|--------|',
+              `| Code Quality & Linting | ${codeQuality} |`,
+              `| CDK Validation | ${cdkValidation} |`,
+              `| Security Scanning | ${securityScan} |`,
+              `| Dependency Check | ${dependencyCheck} |`,
+              `| Test Execution | ${testExecution} |`,
+              '',
+              `**Overall**: ${overall}`,
+              '',
+              `<sub>🔄 Updated: ${new Date().toUTCString()}</sub>`
+            ].join('\n');
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }

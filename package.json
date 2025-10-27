@@ -1,0 +1,39 @@
+{
+  "name": "mobiltex-datalake-cdk",
+  "version": "1.0.0",
+  "description": "Mobiltex Mini Data Lake - AWS CDK Solution",
+  "main": "app.py",
+  "scripts": {
+    "cdk": "cdk",
+    "deploy": "cdk deploy --require-approval never",
+    "destroy": "cdk destroy --force",
+    "synth": "cdk synth",
+    "diff": "cdk diff",
+    "test": "pytest tests/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/johnsonnuviadenu/mobiltex-datalake-cdk.git"
+  },
+  "keywords": [
+    "aws",
+    "cdk",
+    "data-lake",
+    "glue",
+    "athena",
+    "parquet",
+    "iot",
+    "analytics"
+  ],
+  "author": "Johnson Nuviadenu <johnsonnuviadenu@gmail.com>",
+  "license": "MIT",
+  "devDependencies": {
+    "aws-cdk": "^2.168.0",
+    "aws-cdk-lib": "^2.168.0",
+    "constructs": "^10.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}

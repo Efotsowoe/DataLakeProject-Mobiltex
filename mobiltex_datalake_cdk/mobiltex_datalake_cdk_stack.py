@@ -5,7 +5,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-class DataLakeProjectMobiltexStack(Stack):
+class MobiltexDatalakeCdkStack(Stack):
 
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -14,6 +14,6 @@ class DataLakeProjectMobiltexStack(Stack):
 
         # example resource
         # queue = sqs.Queue(
-        #     self, "DataLakeProjectMobiltexQueue",
+        #     self, "MobiltexDatalakeCdkQueue",
         #     visibility_timeout=Duration.seconds(300),
         # )
