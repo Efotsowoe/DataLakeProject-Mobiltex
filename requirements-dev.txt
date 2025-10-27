@@ -1,6 +1,6 @@
 # Testing
 pytest==8.3.4
-pytest-cov==6.0.0
+pytest-cov==7.0.0
 
 # Code Quality
 flake8==7.1.1
