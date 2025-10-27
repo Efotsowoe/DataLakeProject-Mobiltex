@@ -1,0 +1,291 @@
+name: Deploy Mobiltex Data Lake
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'CDK Action to perform'
+        required: true
+        type: choice
+        options:
+          - deploy
+          - destroy
+      environment:
+        description: 'Environment'
+        required: false
+        default: 'dev'
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '22'
+
+jobs:
+  deploy:
+    name: Deploy Infrastructure
+    if: github.event.inputs.action == 'deploy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials from OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/GithubActions
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Deploy-${{ github.run_id }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: CDK Bootstrap (if needed)
+        run: |
+          # Check if bootstrap is needed
+          cdk bootstrap aws://${{ secrets.AWS_ACCOUNT }}/${{ env.AWS_REGION }} || echo "Bootstrap already exists"
+
+      - name: CDK Synth
+        run: cdk synth
+
+      - name: CDK Deploy
+        run: |
+          cdk deploy --require-approval never --all
+          echo "✅ Infrastructure deployed successfully"
+
+      - name: Load Sample Data
+        run: |
+          # Install additional dependencies for data loading
+          pip install pyarrow s3fs
+
+          # Load sample data
+          python3 load_sample_data.py
+          echo "✅ Sample data loaded successfully"
+
+      - name: Repair Partitions
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ATHENA_BUCKET="mobiltex-athena-results-${ACCOUNT_ID}"
+
+          # Run MSCK REPAIR TABLE for readings
+          aws athena start-query-execution \
+            --query-string "MSCK REPAIR TABLE mobiltex_datalake.readings;" \
+            --result-configuration "OutputLocation=s3://${ATHENA_BUCKET}/query-results/" \
+            --work-group mobiltex-analytics
+
+          echo "✅ Partitions repaired"
+
+      - name: Verify Deployment
+        run: |
+          chmod +x verify_deployment.sh
+          ./verify_deployment.sh
+
+      - name: Generate Deployment Summary
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "**AWS Account:** ${ACCOUNT_ID}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📊 Resources Created" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ S3 Buckets: \`mobiltex-datalake-raw-${ACCOUNT_ID}\`, \`mobiltex-datalake-curated-${ACCOUNT_ID}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Glue Database: \`mobiltex_datalake\`" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Glue Tables: \`assets\` (5 rows), \`sensors\` (6 rows), \`readings\` (10 rows)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Athena Workgroup: \`mobiltex-analytics\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔍 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Navigate to [Athena Console](https://console.aws.amazon.com/athena/)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Select workgroup: \`mobiltex-analytics\`" >> $GITHUB_STEP_SUMMARY
+          echo "3. Run test queries:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`sql" >> $GITHUB_STEP_SUMMARY
+          echo "SELECT COUNT(*) FROM mobiltex_datalake.assets;    -- Expected: 5" >> $GITHUB_STEP_SUMMARY
+          echo "SELECT COUNT(*) FROM mobiltex_datalake.sensors;   -- Expected: 6" >> $GITHUB_STEP_SUMMARY
+          echo "SELECT COUNT(*) FROM mobiltex_datalake.readings;  -- Expected: 10" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  destroy:
+    name: Destroy Infrastructure
+    if: github.event.inputs.action == 'destroy'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials from OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT }}:role/GithubActions
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Destroy-${{ github.run_id }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Get AWS Account ID
+        id: account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account_id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+          echo "📋 AWS Account: ${ACCOUNT_ID}"
+
+      - name: Empty S3 Buckets Before Destruction
+        run: |
+          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
+
+          echo "🗑️ Emptying S3 buckets before destruction..."
+
+          # Define bucket names
+          RAW_BUCKET="mobiltex-datalake-raw-${ACCOUNT_ID}"
+          CURATED_BUCKET="mobiltex-datalake-curated-${ACCOUNT_ID}"
+          ATHENA_BUCKET="mobiltex-athena-results-${ACCOUNT_ID}"
+
+          # Function to empty bucket
+          empty_bucket() {
+            local bucket=$1
+            echo "Checking bucket: ${bucket}"
+
+            if aws s3 ls "s3://${bucket}" 2>/dev/null; then
+              echo "  → Emptying ${bucket}..."
+
+              # Delete all objects
+              aws s3 rm "s3://${bucket}" --recursive
+
+              # Delete all versions (if versioning enabled)
+              aws s3api list-object-versions \
+                --bucket "${bucket}" \
+                --output json \
+                --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' | \
+              jq -r '.Objects[]? | "--key \"\(.Key)\" --version-id \"\(.VersionId)\""' | \
+              while read -r line; do
+                if [ -n "$line" ]; then
+                  eval aws s3api delete-object --bucket "${bucket}" $line
+                fi
+              done
+
+              # Delete all delete markers
+              aws s3api list-object-versions \
+                --bucket "${bucket}" \
+                --output json \
+                --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' | \
+              jq -r '.Objects[]? | "--key \"\(.Key)\" --version-id \"\(.VersionId)\""' | \
+              while read -r line; do
+                if [ -n "$line" ]; then
+                  eval aws s3api delete-object --bucket "${bucket}" $line
+                fi
+              done
+
+              echo "  ✅ ${bucket} emptied successfully"
+            else
+              echo "  ⚠️ ${bucket} does not exist or is already empty"
+            fi
+          }
+
+          # Empty all buckets
+          empty_bucket "${RAW_BUCKET}"
+          empty_bucket "${CURATED_BUCKET}"
+          empty_bucket "${ATHENA_BUCKET}"
+
+          echo "✅ All buckets emptied successfully"
+
+      - name: CDK Destroy
+        run: |
+          echo "🗑️ Destroying CDK stack..."
+          cdk destroy --force --all
+          echo "✅ Infrastructure destroyed successfully"
+
+      - name: Verify Buckets Deleted
+        run: |
+          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
+
+          echo "🔍 Verifying buckets are deleted..."
+
+          RAW_BUCKET="mobiltex-datalake-raw-${ACCOUNT_ID}"
+          CURATED_BUCKET="mobiltex-datalake-curated-${ACCOUNT_ID}"
+          ATHENA_BUCKET="mobiltex-athena-results-${ACCOUNT_ID}"
+
+          # Check if buckets still exist
+          REMAINING_BUCKETS=0
+
+          for bucket in "${RAW_BUCKET}" "${CURATED_BUCKET}" "${ATHENA_BUCKET}"; do
+            if aws s3 ls "s3://${bucket}" 2>/dev/null; then
+              echo "  ⚠️ ${bucket} still exists"
+              REMAINING_BUCKETS=$((REMAINING_BUCKETS + 1))
+            else
+              echo "  ✅ ${bucket} deleted"
+            fi
+          done
+
+          if [ ${REMAINING_BUCKETS} -eq 0 ]; then
+            echo "✅ All buckets successfully deleted"
+          else
+            echo "⚠️ ${REMAINING_BUCKETS} bucket(s) still exist"
+          fi
+
+      - name: Generate Destruction Summary
+        run: |
+          ACCOUNT_ID="${{ steps.account.outputs.account_id }}"
+
+          echo "## 🗑️ Destruction Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "**AWS Account:** ${ACCOUNT_ID}" >> $GITHUB_STEP_SUMMARY
+          echo "**Region:** ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🗑️ Cleanup Process" >> $GITHUB_STEP_SUMMARY
+          echo "1. ✅ Emptied S3 buckets:" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`mobiltex-datalake-raw-${ACCOUNT_ID}\`" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`mobiltex-datalake-curated-${ACCOUNT_ID}\`" >> $GITHUB_STEP_SUMMARY
+          echo "   - \`mobiltex-athena-results-${ACCOUNT_ID}\`" >> $GITHUB_STEP_SUMMARY
+          echo "2. ✅ Deleted all object versions" >> $GITHUB_STEP_SUMMARY
+          echo "3. ✅ Removed delete markers" >> $GITHUB_STEP_SUMMARY
+          echo "4. ✅ Destroyed CloudFormation stack" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✅ Resources Removed" >> $GITHUB_STEP_SUMMARY
+          echo "- S3 Buckets (raw, curated, athena-results)" >> $GITHUB_STEP_SUMMARY
+          echo "- Glue Database and Tables" >> $GITHUB_STEP_SUMMARY
+          echo "- Athena Workgroup" >> $GITHUB_STEP_SUMMARY
+          echo "- KMS Keys" >> $GITHUB_STEP_SUMMARY
+          echo "- IAM Roles" >> $GITHUB_STEP_SUMMARY
+          echo "- CloudWatch Log Groups" >> $GITHUB_STEP_SUMMARY

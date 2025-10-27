@@ -1,0 +1,6 @@
+asset_id,asset_name,asset_type,location,install_date,status
+AST001,Pipeline-North-Segment-A,Pipeline,North Field,2020-01-15,Active
+AST002,Compressor-Station-1,Compressor,Central Hub,2019-06-20,Active
+AST003,Pipeline-South-Segment-B,Pipeline,South Field,2021-03-10,Active
+AST004,Storage-Tank-Alpha,Storage,West Facility,2018-11-05,Active
+AST005,Pump-Station-East,Pump,East Junction,2022-02-28,Maintenance

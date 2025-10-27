@@ -1,0 +1,78 @@
+version: 2
+updates:
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    assignees:
+      - "Efotsowoe"
+    pull-request-branch-name:
+      separator: "/"
+
+  # Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+      - "automated"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    assignees:
+      - "Efotsowoe"
+    pull-request-branch-name:
+      separator: "/"
+    groups:
+      # Group AWS CDK packages together
+      aws-cdk:
+        patterns:
+          - "aws-cdk*"
+          - "constructs"
+      # Group AWS SDK packages together
+      aws-sdk:
+        patterns:
+          - "boto3"
+          - "botocore"
+      # Group data processing packages together
+      data-processing:
+        patterns:
+          - "pandas"
+          - "pyarrow"
+          - "s3fs"
+
+  # NPM dependencies (for CDK CLI and related tools)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "automated"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    assignees:
+      - "Efotsowoe"
+    pull-request-branch-name:
+      separator: "/"

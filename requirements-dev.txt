@@ -1,1 +1,19 @@
-pytest==6.2.5
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+
+# Code Quality
+flake8==7.1.1
+black==24.10.0
+isort==5.13.2
+
+# Security
+safety==3.2.11
+bandit==1.8.0
+
+# Linting
+yamllint==1.35.1
+pylint==3.3.2
+
+# Dependency Analysis
+pipdeptree==2.23.4
