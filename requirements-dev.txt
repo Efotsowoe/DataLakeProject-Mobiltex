@@ -16,4 +16,4 @@ yamllint==1.37.1
 pylint==4.0.2
 
 # Dependency Analysis
-pipdeptree==2.23.4
+pipdeptree==2.29.0
