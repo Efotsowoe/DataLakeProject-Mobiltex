@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # ✅ v5 doesn't exist
+        uses: actions/checkout@v5  # ✅ v5 doesn't exist
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -117,7 +117,7 @@ jobs:
           echo "ℹ️ CDK diff skipped (requires AWS credentials)" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload CloudFormation template
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cloudformation-template
           path: cdk.out/*.template.json
@@ -339,7 +339,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: coverage-report
