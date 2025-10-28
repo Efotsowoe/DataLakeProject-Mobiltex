@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5  # ✅ v5 doesn't exist
+        uses: actions/checkout@v5
 
       - name: Set up Python
         uses: actions/setup-python@v6
