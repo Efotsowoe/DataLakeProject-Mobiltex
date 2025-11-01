@@ -204,14 +204,6 @@ SELECT COUNT(*) FROM mobiltex_datalake.readings;  -- Result: 10
 
 ---
 
-## 📞 Contact & Support
-**Author**: Johnson Nuviadenu
-**Email**: johnsonnuviadenu@gmail.com
-**Phone**: +1 (587) 429-9535
-**LinkedIn**: https://www.linkedin.com/in/johnson-n-devops/
-
----
-
 *Last Updated: 2025-10-26*
 *Project: Mobiltex DevOps Take-Home Assignment*
 *Time Invested: ~6 hours (within 4-6 hour guideline)*
