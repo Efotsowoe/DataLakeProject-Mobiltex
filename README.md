@@ -453,9 +453,3 @@ cdk destroy
 # Verify S3 buckets deleted (auto-delete enabled)
 aws s3 ls | grep mobiltex
 ```
-
-## Contact
-Johnson Nuviadenu  
-+1 (587) 429-9535  
-johnsonnuviadenu@gmail.com  
-[LinkedIn](https://www.linkedin.com/in/johnson-n-devops/)
