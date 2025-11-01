@@ -376,7 +376,6 @@ Wednesday 2:15 PM (You):
 For questions about Dependabot configuration:
 - 📖 Check [GitHub Docs](https://docs.github.com/en/code-security/dependabot)
 - 💬 GitHub Community Discussions
-- 📧 Contact: johnsonnuviadenu@gmail.com
 
 ---
 
