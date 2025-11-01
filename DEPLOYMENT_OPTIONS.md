@@ -161,7 +161,6 @@ For questions or issues:
 - 📖 Check [README.md](./README.md)
 - 🔍 Review [CICD_SETUP.md](./CICD_SETUP.md) for CI/CD issues
 - ✅ Run `./verify_deployment.sh` to diagnose problems
-- 📧 Contact: johnsonnuviadenu@gmail.com
 
 ---
 
